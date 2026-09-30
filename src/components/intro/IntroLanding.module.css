@@ -1,0 +1,127 @@
+.stage {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  height: 100svh;
+  padding: 0 var(--gutter);
+  overflow: hidden;
+}
+
+.title {
+  line-height: 0;
+}
+
+.logo {
+  display: block;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.replay {
+  position: absolute;
+  left: 50%;
+  bottom: calc(clamp(20px, 5vh, 44px) + env(safe-area-inset-bottom));
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 10px 14px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 999px;
+  background: rgb(10 11 13 / 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: rgb(255 255 255 / 0.66);
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  translate: -50% 0;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.replay:hover,
+.replay:focus-visible {
+  color: #fff;
+  border-color: color-mix(in srgb, var(--km-brand) 70%, transparent);
+}
+
+.replay svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--km-brand);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* No intro this visit: the lockup reveals itself from its centre line, then a light sweep. */
+:global(html[data-intro='none']) .logo {
+  animation: logo-in 1.15s var(--ease-out) 0.1s both;
+}
+
+@keyframes logo-in {
+  from {
+    clip-path: inset(50% -4% 50% -4%);
+    filter: brightness(2.2);
+  }
+  55% {
+    clip-path: inset(0 -4% 0 -4%);
+    filter: brightness(1.2);
+  }
+  to {
+    clip-path: inset(-60% -12% -60% -12%);
+    filter: none;
+  }
+}
+
+:global(html[data-intro='none']) .logo :global([data-variant='lockup']) > span,
+.logo[data-sweep] :global([data-variant='lockup']) > span {
+  -webkit-mask: var(--mask) 0 0 / 100% 100% no-repeat;
+  mask: var(--mask) 0 0 / 100% 100% no-repeat;
+}
+
+:global(html[data-intro='none']) .logo :global([data-variant='lockup']) > span::before {
+  animation: sweep 1.2s cubic-bezier(0.65, 0, 0.35, 1) 0.75s both;
+}
+
+.logo[data-sweep] :global([data-variant='lockup']) > span::before {
+  animation: sweep 1.2s cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sweep {
+  from {
+    transform: translate3d(-130%, 0, 0) skewX(-14deg);
+    opacity: 1;
+  }
+  to {
+    transform: translate3d(360%, 0, 0) skewX(-14deg);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(html[data-intro='none']) .logo {
+    animation: fade 0.4s ease both;
+  }
+
+  .logo :global([data-variant='lockup']) > span::before {
+    animation: none !important;
+  }
+}
+
+:global(html[data-motion='reduced']) .logo {
+  animation: fade 0.4s ease both !important;
+}
+
+:global(html[data-motion='reduced']) .logo :global([data-variant='lockup']) > span::before {
+  animation: none !important;
+}

@@ -1,0 +1,176 @@
+/* ==========================================================================
+   KickMath intro — tokens, base styles and intro phase choreography.
+   Brand colours (--km-brand, --km-ink, --km-bg …) are injected from the motion
+   config in the root layout; the values below are only fallbacks.
+   ========================================================================== */
+
+:root {
+  --km-brand: #fc4d00;
+  --km-brand-hot: #ff7a38;
+  --km-ink: #fdfdfd;
+  --km-bg: #07080a;
+  --km-surface: #0f1114;
+  --km-text: #f3f4f6;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --gutter: clamp(16px, 4vw, 48px);
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* A single, non-scrolling screen: no scrollbar gutter can show beside the canvas. */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+html {
+  background: var(--km-bg);
+  color: var(--km-text);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background: var(--km-bg);
+  font-family: var(--font-sans), system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+img,
+svg,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+h1 {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--km-brand);
+  outline-offset: 3px;
+}
+
+/* The page sits above the fixed motion background. */
+.km-site {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   Intro phases (set on <html> by the boot script, then by the intro):
+   pending → playing → handoff → done. A CSS-only failsafe reveals the page if
+   the intro's JavaScript never arrives.
+   --------------------------------------------------------------------------- */
+
+html[data-intro-state='pending'] .km-site,
+html[data-intro-state='playing'] .km-site {
+  visibility: hidden;
+}
+
+html[data-intro-state='pending'] [data-logo-anchor],
+html[data-intro-state='playing'] [data-logo-anchor],
+html[data-intro-state='handoff'] [data-logo-anchor] {
+  visibility: hidden;
+}
+
+html[data-intro-state='pending'] .km-site,
+html[data-intro-state='pending'] [data-logo-anchor] {
+  animation: km-failsafe-show 0s linear 6s forwards;
+}
+
+html[data-intro-state='pending'] [data-intro-overlay] {
+  animation: km-failsafe-hide 0.3s ease 6s forwards;
+}
+
+@keyframes km-failsafe-show {
+  to {
+    visibility: visible;
+  }
+}
+
+@keyframes km-failsafe-hide {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Entrance: elements marked [data-enter] build in as the intro settles (or on
+   load when there is no intro). --enter sets the stagger order. Hidden only
+   when JS is present (the boot script always sets data-intro).
+   --------------------------------------------------------------------------- */
+
+html[data-intro] [data-enter] {
+  opacity: 0;
+}
+
+html[data-intro='none'] [data-enter],
+html[data-intro-state='handoff'] [data-enter],
+html[data-intro-state='done'] [data-enter] {
+  animation: km-enter 0.95s var(--ease-out) both;
+  animation-delay: calc(var(--enter, 0) * 90ms + 120ms);
+}
+
+html[data-intro-state='pending'] [data-enter] {
+  animation: km-fade 0.6s ease 6s both;
+}
+
+@keyframes km-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes km-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-intro] [data-enter] {
+    animation-name: km-fade !important;
+    animation-duration: 0.35s !important;
+  }
+}
+
+html[data-motion='reduced'] [data-enter] {
+  animation-name: km-fade !important;
+  animation-duration: 0.35s !important;
+}
+
+.km-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

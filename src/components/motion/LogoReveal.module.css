@@ -1,0 +1,237 @@
+.root {
+  display: contents;
+}
+
+.frame {
+  position: relative;
+  width: var(--logo-w, min(62vw, 920px));
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.rig {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+.glow {
+  position: absolute;
+  background: url('/brand/kickmath-glow.webp') center / 100% 100% no-repeat;
+  opacity: 0;
+  transform-origin: 50% 50%;
+  pointer-events: none;
+}
+
+.parts {
+  position: absolute;
+  inset: 0;
+}
+
+.part {
+  position: absolute;
+  visibility: hidden;
+  overflow: hidden;
+}
+
+.scan {
+  position: absolute;
+  inset: 0;
+}
+
+.partImg {
+  position: absolute;
+  max-width: none;
+  height: auto;
+  pointer-events: none;
+}
+
+.strokes {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.strokes path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+}
+
+.strokes g[data-tone='ink'] path {
+  stroke: var(--km-ink);
+}
+
+.strokes g[data-tone='brand'] path {
+  stroke: var(--km-brand-hot);
+}
+
+.strokes path[data-kind='core'] {
+  stroke-width: var(--core, 2);
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+}
+
+.strokes path[data-kind='glow'] {
+  stroke-width: var(--glow, 8);
+  stroke-dasharray: 0.14 1;
+  stroke-dashoffset: 1.28;
+  stroke-opacity: 0.5;
+}
+
+.final {
+  position: absolute;
+  inset: 0;
+}
+
+.wordmark,
+.tagline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.caret {
+  position: absolute;
+  visibility: hidden;
+  background: var(--km-brand);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--km-brand) 60%, transparent);
+}
+
+.flash,
+.chroma,
+.sweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  -webkit-mask: var(--logo-mask) 0 0 / 100% 100% no-repeat;
+  mask: var(--logo-mask) 0 0 / 100% 100% no-repeat;
+}
+
+.flash {
+  background: #fff;
+  opacity: 0;
+}
+
+.chroma {
+  opacity: 0;
+}
+
+.chromaBrand {
+  background: var(--km-brand);
+}
+
+.chromaInk {
+  background: #fff;
+}
+
+.sweep {
+  overflow: hidden;
+}
+
+.sweep > i {
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 30%;
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0) 0%,
+    rgb(255 255 255 / 0.05) 30%,
+    rgb(255 255 255 / 0.95) 50%,
+    rgb(255 244 236 / 0.05) 70%,
+    rgb(255 255 255 / 0) 100%
+  );
+}
+
+.brackets {
+  --k: 0;
+  position: absolute;
+  inset: -14% -3%;
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: 50% 50%;
+}
+
+.brackets i {
+  position: absolute;
+  width: 4.5%;
+  height: 24%;
+}
+
+.brackets i::before,
+.brackets i::after {
+  content: '';
+  position: absolute;
+  background: var(--km-brand);
+}
+
+.brackets i::before {
+  width: 100%;
+  height: 1.5px;
+  transform: scaleX(var(--k));
+}
+
+.brackets i::after {
+  width: 1.5px;
+  height: 100%;
+  transform: scaleY(var(--k));
+}
+
+.brackets [data-corner='tl'] {
+  top: 0;
+  left: 0;
+}
+
+.brackets [data-corner='tl']::before,
+.brackets [data-corner='tl']::after {
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.brackets [data-corner='tr'] {
+  top: 0;
+  right: 0;
+}
+
+.brackets [data-corner='tr']::before,
+.brackets [data-corner='tr']::after {
+  top: 0;
+  right: 0;
+  transform-origin: 100% 0;
+}
+
+.brackets [data-corner='bl'] {
+  bottom: 0;
+  left: 0;
+}
+
+.brackets [data-corner='bl']::before,
+.brackets [data-corner='bl']::after {
+  bottom: 0;
+  left: 0;
+  transform-origin: 0 100%;
+}
+
+.brackets [data-corner='br'] {
+  bottom: 0;
+  right: 0;
+}
+
+.brackets [data-corner='br']::before,
+.brackets [data-corner='br']::after {
+  bottom: 0;
+  right: 0;
+  transform-origin: 100% 100%;
+}

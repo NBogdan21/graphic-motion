@@ -1,0 +1,154 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  pointer-events: none;
+}
+
+:global(html[data-intro-state='pending']) .overlay,
+:global(html[data-intro-state='playing']) .overlay,
+:global(html[data-intro-state='handoff']) .overlay,
+.overlay[data-leaving] {
+  display: block;
+}
+
+.overlay[data-leaving] {
+  opacity: 0;
+  transition: opacity 0.24s linear;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+/*
+ * Pre-hydration loader: a hairline with a travelling highlight. The intro's
+ * first frame draws the same line in the canvas, so the hand-off is seamless.
+ * Widths must match LOADER_LINE_VW in src/motion/intro/fx/atmosphere.ts.
+ */
+.loader {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 22vw;
+  height: 1px;
+  overflow: hidden;
+  transform: translate(-50%, -0.5px);
+  background: rgb(255 255 255 / 0.38);
+  transition: opacity 0.15s linear;
+}
+
+.loader span {
+  position: absolute;
+  inset: 0;
+  width: 34%;
+  background: linear-gradient(90deg, rgb(255 255 255 / 0), rgb(255 255 255 / 0.95), rgb(255 255 255 / 0));
+  animation: scan 1.15s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+.loader[data-state='playing'] {
+  opacity: 0;
+}
+
+@keyframes scan {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(310%);
+  }
+}
+
+@media (max-width: 1099.98px) {
+  .loader {
+    width: 30vw;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .loader {
+    width: 46vw;
+  }
+}
+
+.probe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--km-intro-logo-w);
+  height: auto;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.skip {
+  position: absolute;
+  right: clamp(16px, 3vw, 32px);
+  bottom: clamp(16px, 3vw, 32px);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px 9px 14px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 999px;
+  background: rgb(10 11 13 / 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: rgb(255 255 255 / 0.72);
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  pointer-events: auto;
+  cursor: pointer;
+  opacity: 0;
+  animation: skip-in 0.5s ease 0.8s forwards;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.skip:hover,
+.skip:focus-visible {
+  color: #fff;
+  border-color: color-mix(in srgb, var(--km-brand) 70%, transparent);
+}
+
+.skip:focus-visible {
+  outline: 2px solid var(--km-brand);
+  outline-offset: 3px;
+}
+
+/* Nothing left to skip once the logo is settling. */
+:global(html[data-intro-state='handoff']) .skip {
+  opacity: 0 !important;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.skip kbd {
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.08);
+  font: inherit;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+@keyframes skip-in {
+  to {
+    opacity: 1;
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
