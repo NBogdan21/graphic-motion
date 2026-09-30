@@ -38,7 +38,7 @@ export function SportsDataBackground({
     const { stage } = getMotionRuntime();
     const zone = cx != null && cy != null && rx != null && ry != null ? { x: cx, y: cy, rx, ry } : undefined;
     const data = stage.add(new AmbientDataLayer({ density, intensity, clear: zone, seed }), 1.2);
-    const arc = arcs ? stage.add(new AmbientArcsLayer(intensity + 0.1), 1.2) : null;
+    const arc = arcs ? stage.add(new AmbientArcsLayer(intensity + 0.1, undefined, zone), 1.2) : null;
     return () => {
       data.remove(0.5);
       arc?.remove(0.5);

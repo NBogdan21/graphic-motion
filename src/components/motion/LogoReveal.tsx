@@ -119,7 +119,8 @@ export const LogoReveal = forwardRef<LogoRevealHandle, LogoRevealProps>(function
           <div className={styles.flash} data-rig-flash style={{ clipPath: `inset(0 0 ${100 - split}% 0)` }} />
           <div className={`${styles.chroma} ${styles.chromaBrand}`} data-rig-chroma="brand" style={{ clipPath: `inset(0 0 ${100 - split}% 0)` }} />
           <div className={`${styles.chroma} ${styles.chromaInk}`} data-rig-chroma="ink" style={{ clipPath: `inset(0 0 ${100 - split}% 0)` }} />
-          <div className={styles.sweep} data-rig-sweep>
+          {/* Wordmark only: the tagline is still decoding while the sweep passes. */}
+          <div className={styles.sweep} data-rig-sweep style={{ clipPath: `inset(0 0 ${100 - split}% 0)` }}>
             <i />
           </div>
         </div>

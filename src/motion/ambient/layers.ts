@@ -1,6 +1,6 @@
 import { rgba } from '../color';
-import { createItem, drawItem, type DataItem, type DataKind, type ItemStyle } from '../data/items';
-import { clamp, ease, progress, quad, wrap } from '../math';
+import { createItem, drawItem, ITEM_GAP, itemBounds, type DataItem, type DataKind, type ItemStyle } from '../data/items';
+import { clamp, ease, ellipseDistance, ellipseRectDistance, progress, quad, rectsOverlap, wrap, type Rect } from '../math';
 import { createRng, hash } from '../random';
 import { drawScanLine, resetTransform, setFont } from '../stage/draw';
 import { glowSprite } from '../stage/sprites';
@@ -106,16 +106,29 @@ export interface AmbientDataOptions {
 
 const AMBIENT_KINDS: DataKind[] = ['odds', 'metric', 'spark', 'metric', 'poisson', 'form', 'score', 'odds'];
 
+/** Slot timing: each slot shows one item per period, phase-shifted per slot. */
+const slotPeriod = (slot: number): number => 10 + hash(slot, 1) * 6;
+const slotPhase = (slot: number): number => hash(slot, 2) * slotPeriod(slot);
+
+interface Placed {
+  item: DataItem;
+  /** Screen area it covers over its whole lifetime (drift and parallax included). */
+  box: Rect;
+}
+
 export class AmbientDataLayer implements StageLayer {
   readonly order = 20;
   readonly ambient = true;
   private slots = 0;
-  private cache = new Map<string, DataItem>();
+  /** Placements by `slot:cycle`, with the time each lifetime ends. */
+  private cache = new Map<string, { placed: Placed | null; until: number }>();
   private readonly density: number;
   private readonly intensity: number;
   private readonly seed: number;
   private readonly clear: ClearZone;
   private composition: StageFrame['composition'] = 'desktop';
+  private width = 0;
+  private height = 0;
 
   constructor(options: AmbientDataOptions = {}) {
     this.density = options.density ?? 1;
@@ -126,31 +139,76 @@ export class AmbientDataLayer implements StageLayer {
 
   resize(frame: StageFrame): void {
     this.composition = frame.composition;
+    this.width = frame.width;
+    this.height = frame.height;
     const base = frame.composition === 'desktop' ? 14 : frame.composition === 'tablet' ? 10 : 6;
     this.slots = Math.max(2, Math.round(base * this.density * Math.min(1.2, frame.density + 0.2)));
     this.cache.clear();
   }
 
-  /** The item a slot shows during its `cycle`-th lifetime (seeded, cached). */
-  private item(slot: number, cycle: number): DataItem {
+  private get size(): number {
+    return this.composition === 'desktop' ? 12.5 : this.composition === 'tablet' ? 12 : 11;
+  }
+
+  /**
+   * The item a slot shows during its `cycle`-th lifetime (seeded, cached), or
+   * null when there is no free spot for it. An item never overlaps the clear
+   * zone, the screen edges, or any lower slot's item on screen at the same
+   * time, so type never collides however the slot timings line up.
+   */
+  private item(slot: number, cycle: number): Placed | null {
     const key = `${slot}:${cycle}`;
     const hit = this.cache.get(key);
-    if (hit) return hit;
-    const rng = createRng(this.seed + slot * 7919 + cycle * 104729);
-    let fx = 0.5;
-    let fy = 0.5;
-    for (let tries = 0; tries < 12; tries++) {
-      fx = 0.05 + rng() * 0.82;
-      fy = 0.12 + rng() * 0.74;
-      const dx = (fx - this.clear.x) / this.clear.rx;
-      const dy = (fy - this.clear.y) / this.clear.ry;
-      if (dx * dx + dy * dy > 1) break;
+    if (hit) return hit.placed;
+
+    const period = slotPeriod(slot);
+    const from = cycle * period - slotPhase(slot);
+    const to = from + period;
+    const busy: Rect[] = [];
+    for (let other = 0; other < slot; other++) {
+      const p = slotPeriod(other);
+      const phase = slotPhase(other);
+      const last = Math.floor((to + phase) / p);
+      for (let c = Math.floor((from + phase) / p); c <= last; c++) {
+        const placed = this.item(other, c);
+        if (placed) busy.push(placed.box);
+      }
     }
-    const item = createItem(rng, AMBIENT_KINDS[(slot + cycle) % AMBIENT_KINDS.length] ?? 'metric', fx, fy, 0);
+
+    const rng = createRng(this.seed + slot * 7919 + cycle * 104729);
+    const item = createItem(rng, AMBIENT_KINDS[(slot + cycle) % AMBIENT_KINDS.length] ?? 'metric', 0, 0, 0);
     item.depth = 0.35 + rng() * 0.5;
-    if (this.cache.size > 256) this.cache.clear();
-    this.cache.set(key, item);
-    return item;
+    const W = this.width;
+    const H = this.height;
+    const { w, h } = itemBounds(item, this.size);
+    // Over its lifetime an item drifts left and up (see render); the cursor
+    // parallax moves it both ways on top of that.
+    const driftX = period * 1.2 * item.depth;
+    const driftY = period * 0.6;
+    const parX = 16 * item.depth;
+    const parY = 10 * item.depth;
+    const { x: cx, y: cy, rx, ry } = this.clear;
+    let placed: Placed | null = null;
+    for (let tries = 0; tries < 24 && !placed; tries++) {
+      const fx = 0.04 + rng() * 0.88;
+      const fy = 0.08 + rng() * 0.84;
+      const reach = { x: fx * W - driftX - parX, y: fy * H - driftY - parY, w: w + driftX + parX * 2, h: h + driftY + parY * 2 };
+      if (reach.x < 12 || reach.y < 12 || reach.x + reach.w > W - 12 || reach.y + reach.h > H - 12) continue;
+      if (ellipseRectDistance(cx * W, cy * H, rx * W, ry * H, reach) < 1) continue;
+      // Neighbours share most of the parallax, so the gap only needs the drift.
+      const box = {
+        x: fx * W - driftX - ITEM_GAP.x,
+        y: fy * H - driftY - ITEM_GAP.y,
+        w: w + driftX + ITEM_GAP.x * 2,
+        h: h + driftY + ITEM_GAP.y * 2,
+      };
+      if (busy.some((b) => rectsOverlap(b, box))) continue;
+      item.fx = fx;
+      item.fy = fy;
+      placed = { item, box };
+    }
+    this.cache.set(key, { placed, until: to });
+    return placed;
   }
 
   render(ctx: CanvasRenderingContext2D, frame: StageFrame, alpha: number): void {
@@ -160,16 +218,22 @@ export class AmbientDataLayer implements StageLayer {
       font: frame.font,
       ink: colors.ink,
       brand: colors.brand,
-      size: this.composition === 'desktop' ? 12.5 : this.composition === 'tablet' ? 12 : 11,
+      size: this.size,
     };
     const px = frame.interactive ? frame.pointer.x : 0;
     const py = frame.interactive ? frame.pointer.y : 0;
+    // Forget lifetimes that have ended. Never mid-lookup: placements depend on
+    // each other, and a cache emptied during one would recompute endlessly.
+    if (this.cache.size > 2048) {
+      for (const [key, entry] of this.cache) if (entry.until < t - 1) this.cache.delete(key);
+    }
     for (let slot = 0; slot < this.slots; slot++) {
-      const period = 10 + hash(slot, 1) * 6;
-      const local = t + hash(slot, 2) * period;
+      const period = slotPeriod(slot);
+      const local = t + slotPhase(slot);
       const cycle = Math.floor(local / period);
       const age = local - cycle * period;
-      const item = this.item(slot, cycle);
+      const item = this.item(slot, cycle)?.item;
+      if (!item) continue;
       const life = progress(age, 0.2, 0.9);
       const out = 1 - progress(age, period - 1.2, period - 0.2);
       if (life <= 0 || out <= 0) continue;
@@ -191,6 +255,8 @@ export class AmbientArcsLayer implements StageLayer {
   constructor(
     private readonly intensity = 0.6,
     private readonly period = 7.5,
+    /** The ball passes behind this zone (the content): it fades out while crossing it. */
+    private readonly clear?: ClearZone,
   ) {}
 
   render(ctx: CanvasRenderingContext2D, frame: StageFrame, alpha: number): void {
@@ -212,6 +278,9 @@ export class AmbientArcsLayer implements StageLayer {
     const a = alpha * this.intensity * (1 - after);
     const head = ease.inOutCubic(p);
     const pt = (s: number): [number, number] => [quad(x0, W / 2, x1, s), quad(y0, cy, y1, s)];
+    const z = this.clear;
+    const visible = (x: number, y: number): number =>
+      z ? clamp((ellipseDistance(z.x * W, z.y * H, z.rx * W, z.ry * H, x, y) - 1) / 0.12) : 1;
 
     ctx.lineWidth = 1.25;
     const segs = 22;
@@ -221,7 +290,9 @@ export class AmbientArcsLayer implements StageLayer {
       if (s1 <= 0) continue;
       const [ax, ay] = pt(Math.max(0, s0));
       const [bx, by] = pt(s1);
-      ctx.strokeStyle = rgba(color, a * (i / segs) * 0.6);
+      const v = visible((ax + bx) / 2, (ay + by) / 2);
+      if (v <= 0) continue;
+      ctx.strokeStyle = rgba(color, a * v * (i / segs) * 0.6);
       ctx.beginPath();
       ctx.moveTo(ax, ay);
       ctx.lineTo(bx, by);
@@ -230,24 +301,29 @@ export class AmbientArcsLayer implements StageLayer {
     ctx.fillStyle = rgba(color, a * 0.25);
     for (let s = 0.02; s < head - 0.18; s += 0.04) {
       const [x, y] = pt(s);
-      ctx.fillRect(x - 1, y - 1, 2, 2);
+      if (visible(x, y) > 0.5) ctx.fillRect(x - 1, y - 1, 2, 2);
     }
-    if (p < 1) {
-      const [hx, hy] = pt(head);
+    const [hx, hy] = pt(head);
+    const headVisible = visible(hx, hy);
+    if (p < 1 && headVisible > 0) {
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = a * 0.8;
+      ctx.globalAlpha = a * 0.8 * headVisible;
       ctx.drawImage(glowSprite(color, 64), hx - 14, hy - 14, 28, 28);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
     }
-    // a probability readout that travels with the ball
+    // a probability readout that travels with the ball (never over the content)
     if (p > 0.35 && p < 1) {
-      const [hx, hy] = pt(head);
-      setFont(ctx, mobile ? 9 : 10, frame.font, 500);
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'bottom';
-      ctx.fillStyle = rgba(color, a * 0.7 * Math.sin(((p - 0.35) / 0.65) * Math.PI));
-      ctx.fillText(`P ${(0.48 + head * 0.36).toFixed(2)}`, hx + 10, hy - 8);
+      const size = mobile ? 9 : 10;
+      const label = { x: hx + 10, y: hy - 8 - size, w: size * 4, h: size };
+      const clearFade = z ? clamp((ellipseRectDistance(z.x * W, z.y * H, z.rx * W, z.ry * H, label) - 1) / 0.15) : 1;
+      if (clearFade > 0) {
+        setFont(ctx, size, frame.font, 500);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = rgba(color, a * 0.7 * clearFade * Math.sin(((p - 0.35) / 0.65) * Math.PI));
+        ctx.fillText(`P ${(0.48 + head * 0.36).toFixed(2)}`, hx + 10, hy - 8);
+      }
     }
     resetTransform(ctx, dpr);
   }

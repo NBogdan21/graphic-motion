@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run lint",
     "test:e2e": "playwright test",
-    "brand:assets": "python3 scripts/build_brand_assets.py"
+    "brand:assets": "python3 scripts/build_brand_assets.py",
+    "render:video": "node scripts/render-video.mjs"
   },
   "dependencies": {
     "next": "16.3.8",

@@ -43,6 +43,23 @@ A tiny inline script runs before first paint (no flash of the wrong state) and p
 
 **QA URL parameters:** `?intro=full|short|none` forces a mode. With `?intro=…`, add `&t=5.2` to freeze at a moment, or `&rate=0.5` to slow it down. `window.__kmIntro` then exposes `seek(t)`, `pause()`, `play()` and `skip()`.
 
+## Video export
+
+The intro can also be exported as an MP4 for social, presentations or an ad. It is rendered frame by frame from the live build rather than screen-recorded, so every frame is exact and evenly spaced:
+
+```bash
+npm run build && npm start                  # in one terminal
+npm run render:video                        # 3840×2160 + 1920×1080, 60 fps → video/
+npm run render:video -- --preset mobile     # 1080×1920, the portrait composition
+```
+
+- `?intro=full&render=1` puts the engine on a manual clock (`window.__kmRender.step(dt)`) at the top quality tier. CSS animations advance on the same clock.
+- Frames are captured at 3840 px on the long edge. 1080p and the portrait cut are 2× supersampled (Lanczos). Output is H.264 High, BT.709, `+faststart`.
+- Options: `--url` (default `http://localhost:3000`), `--out` (`video`), `--fps` (60), `--tail` (seconds held on the logo at the end, 2.5).
+- Needs ffmpeg with libx264 on `PATH` (or set `FFMPEG_PATH`). `PLAYWRIGHT_CHROMIUM_PATH` points at an existing Chromium.
+
+At 4K the large logo is upscaled from the 1496 px-wide master, so it is slightly softer than the 1080p cut; a vector or 2× master fixes that (see the tip below).
+
 ## Configuration
 
 Everything is driven by one config. Override it in `src/config/motion.ts`; the defaults and documentation live in `src/motion/config.ts`.
@@ -125,6 +142,7 @@ Static checks: `npm run check` (TypeScript + ESLint).
 ```
 brand-source/                 untouched master logo
 scripts/build_brand_assets.py asset pipeline (exact crops, part windows, geometry, icons)
+scripts/render-video.mjs      frame-exact MP4 export of the intro
 public/brand/                 generated logo rasters
 src/
   app/                        layout (fonts, boot script, CSS vars), page, icons

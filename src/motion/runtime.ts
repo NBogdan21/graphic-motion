@@ -8,8 +8,16 @@ import {
 import { detectDevice, type DeviceProfile } from './device';
 import { PointerTracker } from './pointer';
 import { Stage } from './stage/stage';
+import { ticker } from './ticker';
 
 type Listener = (device: DeviceProfile) => void;
+
+declare global {
+  interface Window {
+    /** Offline render hook (only with `?intro=…&render=1`): advance one frame. */
+    __kmRender?: { step(dt?: number): void };
+  }
+}
 
 /**
  * Client-side singleton that owns the shared motion state: configuration,
@@ -21,11 +29,22 @@ export class MotionRuntime {
   device: DeviceProfile;
   readonly pointer = new PointerTracker();
   readonly stage: Stage;
+  /**
+   * Video-export mode (`?intro=…&render=1`): the clock only advances through
+   * `window.__kmRender.step()`, and quality is pinned to the highest tier.
+   */
+  readonly renderMode: boolean;
   private listeners = new Set<Listener>();
   private resizeRaf = 0;
 
   constructor() {
-    this.device = detectDevice(this.config);
+    const params = new URLSearchParams(window.location.search);
+    this.renderMode = params.has('intro') && params.get('render') === '1';
+    if (this.renderMode) {
+      ticker.setManual(true);
+      window.__kmRender = { step: (dt = 1 / 60) => ticker.step(dt) };
+    }
+    this.device = this.detect();
     this.stage = new Stage(() => this.device, () => this.config, this.pointer);
     window.addEventListener('resize', this.onResize, { passive: true });
     matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', this.refresh);
@@ -57,7 +76,7 @@ export class MotionRuntime {
   }
 
   refresh = (): void => {
-    this.device = detectDevice(this.config);
+    this.device = this.detect();
     document.documentElement.dataset.composition = this.device.composition;
     this.syncPointer();
     this.stage.refresh();
@@ -68,10 +87,23 @@ export class MotionRuntime {
     cancelAnimationFrame(this.resizeRaf);
     this.resizeRaf = requestAnimationFrame(() => {
       const prev = this.device;
-      const next = detectDevice(this.config);
+      const next = this.detect();
       if (next.composition !== prev.composition || next.dpr !== prev.dpr) this.refresh();
     });
   };
+
+  private detect(): DeviceProfile {
+    const device = detectDevice(this.config);
+    if (!this.renderMode) return device;
+    // Exporting: best tier and full resolution regardless of the machine rendering it.
+    return {
+      ...device,
+      tier: 'high',
+      density: Math.max(0.2, this.config.intensity),
+      filters: true,
+      dpr: Math.min(window.devicePixelRatio || 1, 3),
+    };
+  }
 
   private syncPointer(): void {
     const d = this.device;

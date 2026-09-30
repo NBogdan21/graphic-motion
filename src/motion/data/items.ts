@@ -1,5 +1,5 @@
 import { rgba } from '../color';
-import { clamp, ease } from '../math';
+import { clamp, ease, rectsOverlap, type Rect } from '../math';
 import { createRng, hash, type Rng } from '../random';
 import { randomWalk, setFont, strokeSeries } from '../stage/draw';
 
@@ -105,31 +105,76 @@ export function createItem(rng: Rng, kind: DataKind, fx: number, fy: number, app
   }
 }
 
-/** Scatter items over the viewport on a jittered grid, keeping a clear zone at the centre. */
+/** Keeps scattered items apart and on screen (all in CSS px). */
+export interface ScatterFit {
+  width: number;
+  height: number;
+  /** Base value size the items are drawn at (`ItemStyle.size`). */
+  size: number;
+  /** Horizontal bands to keep clear, as [top, bottom] (e.g. the match-minute rulers). */
+  avoid?: readonly (readonly [number, number])[];
+}
+
+/** Minimum clearance around a data item, in CSS px (doubled between two items). */
+export const ITEM_GAP = { x: 14, y: 9 } as const;
+const EDGE_MARGIN = 12;
+
+/**
+ * Scatter items over the viewport on a jittered grid, keeping a clear zone at
+ * the centre. With `fit`, items also never touch each other or an `avoid`
+ * band, and stay fully on screen: an item that doesn't fit is re-jittered
+ * within its cell (on its own random stream, so the rest of the layout keeps
+ * its positions) and left out if it still can't be placed.
+ */
 export function scatterItems(
   seed: number,
   cols: number,
   rows: number,
   window: [number, number],
   clear: { rx: number; ry: number } = { rx: 0.26, ry: 0.11 },
+  fit?: ScatterFit,
 ): DataItem[] {
   const rng = createRng(seed);
   const kinds: DataKind[] = ['odds', 'metric', 'spark', 'metric', 'poisson', 'odds', 'form', 'metric', 'score'];
   const items: DataItem[] = [];
+  const placed: Rect[] = [];
+  const inClear = (fx: number, fy: number) => ((fx - 0.5) / clear.rx) ** 2 + ((fy - 0.5) / clear.ry) ** 2 < 1;
+  // push outside the clear zone, vertically
+  const clearY = (fy: number, r: number) => 0.5 + Math.sign(fy - 0.5 || 1) * clear.ry * (1.15 + r * 0.3);
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       if (rng.chance(0.12)) continue;
       let fx = (c + 0.5 + (rng() - 0.5) * 0.62) / cols;
       let fy = (r + 0.5 + (rng() - 0.5) * 0.55) / rows;
-      const dx = (fx - 0.5) / clear.rx;
-      const dy = (fy - 0.5) / clear.ry;
-      if (dx * dx + dy * dy < 1) {
-        // push outside the clear zone, vertically
-        fy = 0.5 + Math.sign(fy - 0.5 || 1) * clear.ry * (1.15 + rng() * 0.3);
+      if (inClear(fx, fy)) {
+        fy = clearY(fy, rng());
         fx = clamp(fx, 0.06, 0.94);
       }
       const appear = window[0] + rng() * (window[1] - window[0]);
-      items.push(createItem(rng, kinds[(r * cols + c + rng.int(0, 3)) % kinds.length] ?? 'metric', fx, fy, appear));
+      const item = createItem(rng, kinds[(r * cols + c + rng.int(0, 3)) % kinds.length] ?? 'metric', fx, fy, appear);
+      if (!fit) {
+        items.push(item);
+        continue;
+      }
+      const { w, h } = itemBounds(item, fit.size);
+      const alt = createRng(item.seed);
+      for (let tries = 0; tries < 16; tries++) {
+        if (tries > 0) {
+          item.fx = (c + 0.08 + alt() * 0.84) / cols;
+          item.fy = (r + 0.08 + alt() * 0.84) / rows;
+          if (inClear(item.fx, item.fy)) item.fy = clearY(item.fy, alt());
+        }
+        const x = item.fx * fit.width;
+        const y = item.fy * fit.height;
+        if (x < EDGE_MARGIN || y < EDGE_MARGIN) continue;
+        if (x + w > fit.width - EDGE_MARGIN || y + h > fit.height - EDGE_MARGIN) continue;
+        const box = { x: x - ITEM_GAP.x, y: y - ITEM_GAP.y, w: w + ITEM_GAP.x * 2, h: h + ITEM_GAP.y * 2 };
+        if (fit.avoid?.some(([top, bottom]) => box.y < bottom && top < box.y + box.h)) continue;
+        if (placed.some((p) => rectsOverlap(p, box))) continue;
+        placed.push(box);
+        items.push(item);
+        break;
+      }
     }
   }
   return items;
@@ -352,17 +397,44 @@ function drawArrow(
   ctx.fill();
 }
 
-/** Approximate rendered width of an item (for streak placement and bounds). */
-export function itemWidth(item: DataItem, size: number): number {
+/**
+ * Rendered size of an item drawn by `drawItem` at base size `size`, in CSS px:
+ * label row plus values, including tick arrows (monospace advance is 0.6 em).
+ */
+export function itemBounds(item: DataItem, size: number): { w: number; h: number } {
   const s = size * (0.78 + item.depth * 0.32);
+  const labelW = item.label.length * s * 0.42;
+  const values = s * 1.015; // top of the value row (label size × 1.45)
+  let w: number;
+  let h: number;
   switch (item.kind) {
     case 'odds':
-      return s * 0.6 * 5.6 * 3;
+      w = s * 9.72;
+      h = values + s;
+      break;
+    case 'metric': {
+      // one spare character: a tick can add a digit
+      const chars = item.prefix.length + fmt(item.values[0] ?? 0, item.decimals).length + item.suffix.length + 1;
+      w = chars * s * 0.672 + 6 + s * 0.3;
+      h = values + (item.label.startsWith('P(') ? s * 1.55 + 1 : s * 1.12);
+      break;
+    }
     case 'spark':
-      return s * 6.4 + s * 3;
+      w = s * 8.8 + 8;
+      h = values + s * 1.7 + 2;
+      break;
     case 'poisson':
-      return 7 * s * 0.7;
-    default:
-      return s * 0.6 * 8;
+      w = s * 4.62;
+      h = values + s * 2.1 + 2;
+      break;
+    case 'form':
+      w = s * 4.46;
+      h = values + s * 0.62 + 2;
+      break;
+    case 'score':
+      w = s * 5.66;
+      h = values + s * 1.25;
+      break;
   }
+  return { w: Math.max(w, labelW), h };
 }

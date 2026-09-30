@@ -1,5 +1,5 @@
 import { rgba } from '../../color';
-import { clamp, ease, progress, quad, wrap } from '../../math';
+import { clamp, ease, outsideRect, progress, quad, rectsOverlap, wrap, type Rect } from '../../math';
 import { resetTransform, setFont } from '../../stage/draw';
 import { glowSprite } from '../../stage/sprites';
 import type { StageFrame } from '../../stage/stage';
@@ -16,7 +16,10 @@ interface Arc {
 }
 
 const STATS = ['P 0.62', 'P 0.71', 'P 0.84'];
+/** Preferred points along the arc; each moves to the nearest spot that stays off the logo. */
 const STAT_AT = [0.3, 0.55, 0.8];
+/** Space kept between a probability point and the logo (clears the HUD brackets too). */
+const STAT_KEEP_OUT = 28;
 
 /**
  * Scene 06 — sports momentum around the settled logo: ball-flight
@@ -32,11 +35,13 @@ export class MomentumFx implements Fx {
   layout(frame: StageFrame): void {
     const { width: W, height: H } = frame;
     this.mobile = frame.composition === 'mobile';
+    // Arc A flies over the logo and arc B under it: neither crosses the letters
+    // (on a phone the lockup spans the width, so A stays above it).
     if (this.mobile) {
-      this.arcA = { x0: -0.05 * W, y0: 0.92 * H, cx: 0.62 * W, cy: -0.02 * H, x1: 1.08 * W, y1: 0.34 * H };
+      this.arcA = { x0: -0.08 * W, y0: 0.38 * H, cx: 0.4 * W, cy: -0.06 * H, x1: 1.08 * W, y1: 0.26 * H };
       this.arcB = { x0: 1.06 * W, y0: 0.76 * H, cx: 0.4 * W, cy: 1.12 * H, x1: -0.08 * W, y1: 0.66 * H };
     } else {
-      this.arcA = { x0: -0.04 * W, y0: 0.82 * H, cx: 0.5 * W, cy: -0.12 * H, x1: 1.04 * W, y1: 0.58 * H };
+      this.arcA = { x0: -0.04 * W, y0: 0.86 * H, cx: 0.2 * W, cy: -0.34 * H, x1: 1.04 * W, y1: 0.5 * H };
       this.arcB = { x0: 1.05 * W, y0: 0.74 * H, cx: 0.5 * W, cy: 1.06 * H, x1: -0.05 * W, y1: 0.62 * H };
     }
   }
@@ -88,7 +93,7 @@ export class MomentumFx implements Fx {
     if (ringIn > 0) {
       const grow = 1 + exit * 0.25;
       const rx = Math.min(lw * (this.mobile ? 0.5 : 0.62), W * 0.47) * grow;
-      const ry = this.mobile ? rx * 0.92 : lh * 0.98 * grow;
+      const ry = this.mobile ? Math.min(rx * 0.92, H * 0.42) : lh * 0.98 * grow;
       const spin = (t - m.start) * 0.18;
       const start = -Math.PI / 2 + spin;
       ctx.lineWidth = 1;
@@ -150,8 +155,15 @@ export class MomentumFx implements Fx {
     }
 
     // --- trajectories ---------------------------------------------------------------
-    this.trajectory(ctx, frame, this.arcA, t, m.start, m.start + m.len * 0.78, colors.ink, a, true);
-    this.trajectory(ctx, frame, this.arcB, t, m.start + m.len * 0.22, m.start + m.len * 0.98, colors.brandHot, a * 0.85, false);
+    const logo: Rect = { x: cx - lw / 2, y: cy - lh / 2, w: lw, h: lh };
+    const keepOut: Rect = {
+      x: logo.x - STAT_KEEP_OUT,
+      y: logo.y - STAT_KEEP_OUT,
+      w: logo.w + STAT_KEEP_OUT * 2,
+      h: logo.h + STAT_KEEP_OUT * 2,
+    };
+    this.trajectory(ctx, frame, this.arcA, t, m.start, m.start + m.len * 0.78, colors.ink, a, logo, keepOut);
+    this.trajectory(ctx, frame, this.arcB, t, m.start + m.len * 0.22, m.start + m.len * 0.98, colors.brandHot, a * 0.85, logo, null);
 
     // --- chevrons driving outward ------------------------------------------------------
     const chevIn = progress(t, m.start + m.len * 0.3, m.start + m.len * 0.9);
@@ -190,7 +202,13 @@ export class MomentumFx implements Fx {
     resetTransform(ctx, dpr);
   }
 
-  /** A ball-flight arc: tracked trail, glowing head, optional probability points. */
+  /**
+   * A ball-flight arc: tracked trail, glowing head and, when `stats` gives the
+   * area to keep clear, probability points whose readouts never sit on the logo.
+   * The arcs are laid out to pass the logo; should a viewport's proportions
+   * still bring one across it, it fades out behind the lockup's box rather
+   * than showing between the letters.
+   */
   private trajectory(
     ctx: CanvasRenderingContext2D,
     frame: StageFrame,
@@ -200,7 +218,8 @@ export class MomentumFx implements Fx {
     end: number,
     color: string,
     a: number,
-    stats: boolean,
+    logo: Rect,
+    stats: Rect | null,
   ): void {
     const p = progress(t, start, end);
     const after = clamp((t - end) / 0.5);
@@ -219,7 +238,9 @@ export class MomentumFx implements Fx {
       if (s1 <= 0) continue;
       const [x0, y0] = pt(Math.max(0, s0));
       const [x1, y1] = pt(s1);
-      ctx.strokeStyle = rgba(color, fade * (i / segs) * 0.9);
+      const behind = outsideRect(logo, (x0 + x1) / 2, (y0 + y1) / 2, 14);
+      if (behind <= 0) continue;
+      ctx.strokeStyle = rgba(color, fade * behind * (i / segs) * 0.9);
       ctx.beginPath();
       ctx.moveTo(x0, y0);
       ctx.lineTo(x1, y1);
@@ -229,26 +250,29 @@ export class MomentumFx implements Fx {
     ctx.fillStyle = rgba(color, fade * 0.35);
     for (let s = 0.02; s < head - trail * 0.6; s += 0.035) {
       const [x, y] = pt(s);
-      ctx.fillRect(x - 1, y - 1, 2, 2);
+      if (outsideRect(logo, x, y, 14) > 0.5) ctx.fillRect(x - 1, y - 1, 2, 2);
     }
     // head
-    if (p < 1) {
-      const [hx, hy] = pt(head);
+    const [hx, hy] = pt(head);
+    const headFade = fade * outsideRect(logo, hx, hy, 24);
+    if (p < 1 && headFade > 0) {
       const g = glowSprite(color, 64);
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = fade;
+      ctx.globalAlpha = headFade;
       ctx.drawImage(g, hx - 18, hy - 18, 36, 36);
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = rgba('#ffffff', fade);
+      ctx.fillStyle = rgba('#ffffff', headFade);
       ctx.fillRect(hx - 1.5, hy - 1.5, 3, 3);
     }
     if (!stats) return;
-    setFont(ctx, frame.composition === 'mobile' ? 9.5 : 10.5, frame.font, 500);
+    const fontSize = frame.composition === 'mobile' ? 9.5 : 10.5;
+    setFont(ctx, fontSize, frame.font, 500);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
-    STAT_AT.forEach((at, i) => {
-      if (head < at) return;
+    STAT_AT.forEach((preferred, i) => {
+      const at = statPoint(arc, preferred, ctx.measureText(STATS[i] ?? '').width, fontSize, stats, frame);
+      if (at < 0 || head < at) return;
       const since = (head - at) / 0.12;
       const [x, y] = pt(at);
       const pop = ease.outCubic(clamp(since));
@@ -263,4 +287,24 @@ export class MomentumFx implements Fx {
       ctx.fillText(STATS[i] ?? '', x + 8, y - 6);
     });
   }
+}
+
+/**
+ * The arc parameter nearest `preferred` where a probability point (its ring,
+ * up to 10 px, and the readout to its upper right) stays clear of `keepOut`
+ * and on screen; -1 if there is none nearby.
+ */
+function statPoint(arc: Arc, preferred: number, labelW: number, fontSize: number, keepOut: Rect, frame: StageFrame): number {
+  const margin = 8;
+  // preferred, then +0.01, -0.01, +0.02, … (later on the arc first)
+  for (let j = 0; j <= 40; j++) {
+    const s = preferred + (j % 2 ? 1 : -1) * Math.ceil(j / 2) * 0.01;
+    if (s < 0.05 || s > 0.95) continue;
+    const x = quad(arc.x0, arc.cx, arc.x1, s);
+    const y = quad(arc.y0, arc.cy, arc.y1, s);
+    const r = { x: x - 10, y: y - 6 - fontSize, w: 18 + labelW, h: 16 + fontSize };
+    if (r.x < margin || r.y < margin || r.x + r.w > frame.width - margin || r.y + r.h > frame.height - margin) continue;
+    if (!rectsOverlap(r, keepOut)) return s;
+  }
+  return -1;
 }

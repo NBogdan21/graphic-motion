@@ -73,3 +73,29 @@ export const quad = (a: number, c: number, b: number, t: number): number => {
 
 /** Frame-rate independent exponential smoothing factor. */
 export const damp = (lambda: number, dt: number): number => 1 - Math.exp(-lambda * dt);
+
+/** Axis-aligned rectangle in CSS pixels. */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export const rectsOverlap = (a: Rect, b: Rect): boolean =>
+  a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/** Normalised distance of (x, y) from an ellipse's centre (cx, cy; radii rx, ry): 1 on its outline. */
+export const ellipseDistance = (cx: number, cy: number, rx: number, ry: number, x: number, y: number): number =>
+  Math.hypot((x - cx) / rx, (y - cy) / ry);
+
+/** Normalised ellipse distance of the nearest point of a rectangle: below 1 means they intersect. */
+export const ellipseRectDistance = (cx: number, cy: number, rx: number, ry: number, r: Rect): number =>
+  ellipseDistance(cx, cy, rx, ry, clamp(cx, r.x, r.x + r.w), clamp(cy, r.y, r.y + r.h));
+
+/** 0 inside the rectangle, rising to 1 at `feather` px outside it. */
+export const outsideRect = (r: Rect, x: number, y: number, feather: number): number => {
+  const dx = Math.max(r.x - x, 0, x - (r.x + r.w));
+  const dy = Math.max(r.y - y, 0, y - (r.y + r.h));
+  return clamp(Math.hypot(dx, dy) / feather);
+};

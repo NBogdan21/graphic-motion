@@ -1,11 +1,18 @@
-import { createItem, drawItem, itemWidth, scatterItems, type DataItem, type ItemStyle } from '../../data/items';
+import { createItem, drawItem, itemBounds, scatterItems, type DataItem, type ItemStyle } from '../../data/items';
 import { clamp, ease, progress } from '../../math';
 import { createRng } from '../../random';
 import { drawScanLine, resetTransform } from '../../stage/draw';
 import { streakSprite } from '../../stage/sprites';
 import type { StageFrame } from '../../stage/stage';
 import type { IntroSceneState } from '../sceneState';
+import { rulerBands } from './atmosphere';
 import { speedLevel, speedTravel, type Fx } from './shared';
+
+const valueSize = (composition: StageFrame['composition']): number =>
+  composition === 'desktop' ? 14 : composition === 'tablet' ? 12.5 : 11.5;
+
+/** Resting (untransformed) vertical centre of the logo, which the rulers are placed around. */
+const restCenterY = (st: IntroSceneState): number => st.logo.y + st.logo.h / 2;
 
 /**
  * Scene 02 — sports data decodes into the dark: odds, probabilities, goal
@@ -16,8 +23,10 @@ import { speedLevel, speedTravel, type Fx } from './shared';
 export class DataFx implements Fx {
   private items: DataItem[] = [];
   private vertical = false;
+  private laidOutAt = 0;
 
   layout(frame: StageFrame, st: IntroSceneState): void {
+    this.laidOutAt = restCenterY(st);
     const d = st.tl.data;
     if (d.len <= 0) {
       this.items = [];
@@ -26,10 +35,11 @@ export class DataFx implements Fx {
     const window: [number, number] = [d.start - d.len * 0.08, d.start + d.len * 0.62];
     this.vertical = frame.composition === 'mobile';
     if (this.vertical) {
-      // Mobile: a two-column market feed that scrolls like a live list.
+      // Mobile: a two-column market feed that scrolls like a live list
+      // (fewer rows when a phone is held sideways, so they never touch).
       const rng = createRng(0xfeed);
       const items: DataItem[] = [];
-      const rows = 7;
+      const rows = clamp(Math.round(frame.height / 90), 4, 7);
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < 2; c++) {
           let fy = 0.1 + (r / (rows - 1)) * 0.8;
@@ -41,12 +51,19 @@ export class DataFx implements Fx {
       }
       this.items = items;
     } else {
+      // Items keep clear of each other and of the match-minute rulers.
       const cols = frame.composition === 'desktop' ? 6 : 5;
-      this.items = scatterItems(0xda7a, cols, 4, window);
+      this.items = scatterItems(0xda7a, cols, 4, window, undefined, {
+        width: frame.width,
+        height: frame.height,
+        size: valueSize(frame.composition),
+        avoid: rulerBands(frame, this.laidOutAt),
+      });
     }
   }
 
   draw(ctx: CanvasRenderingContext2D, frame: StageFrame, st: IntroSceneState, alpha: number): void {
+    if (Math.abs(restCenterY(st) - this.laidOutAt) > 1) this.layout(frame, st);
     if (!this.items.length) return;
     const { t, tl } = st;
     const { width: W, height: H, dpr, colors } = frame;
@@ -63,7 +80,7 @@ export class DataFx implements Fx {
       font: frame.font,
       ink: colors.ink,
       brand: colors.brand,
-      size: frame.composition === 'desktop' ? 14 : frame.composition === 'tablet' ? 12.5 : 11.5,
+      size: valueSize(frame.composition),
     };
     const scanP = progress(t, d.start + d.len * 0.22, d.end);
     const scanY = ease.inOutQuad(scanP) * H;
@@ -89,7 +106,7 @@ export class DataFx implements Fx {
       // The data stretches into a light streak as it accelerates.
       if (level > 0.02) {
         const len = Math.min(this.vertical ? H * 0.6 : W * 0.5, 40 + level * 420 * depth);
-        const w = itemWidth(item, style.size);
+        const w = itemBounds(item, style.size).w;
         ctx.globalAlpha = alpha * Math.min(1, level * 1.4) * (0.25 + depth * 0.55) * (1 - progress(t, s.end - 0.1, s.end + 0.25));
         const sprite = item.hot ? streakHot : streak;
         if (this.vertical) {

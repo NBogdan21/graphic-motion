@@ -12,6 +12,24 @@ export const LOADER_LINE_VW = { desktop: 22, tablet: 30, mobile: 46 } as const;
 
 const MINUTES = ["0'", "15'", "30'", "45'", "60'", "75'", "90'"];
 
+/** The match-minute rulers sit this far above and below the logo centre (fraction of the height). */
+const RULER_OFFSET = 0.4;
+
+/**
+ * Horizontal bands the rulers occupy (ticks, minute labels and parallax), as
+ * [top, bottom] in CSS px, so other layers can keep their type off them.
+ */
+export function rulerBands(frame: StageFrame, logoCenterY: number): [number, number][] {
+  // Desktop/tablet only: on a phone the rulers would crowd the market feed.
+  if (frame.composition === 'mobile') return [];
+  const top = logoCenterY - frame.height * RULER_OFFSET;
+  const bottom = logoCenterY + frame.height * RULER_OFFSET;
+  return [
+    [top - 12, top + 20],
+    [bottom - 19, bottom + 13],
+  ];
+}
+
 interface Line {
   x: number;
   y: number;
@@ -116,9 +134,8 @@ export class AtmosphereFx implements Fx {
     // --- match-minute rulers (content drifts left, faster with the speed field) --
     const rulerIn = ease.outCubic(progress(t, a.start + a.len * 0.35, a.end));
     const rulerLevel = rulerIn * alpha * exit * fadeForLogo;
-    // Desktop/tablet only: on a phone the rulers would crowd the market feed.
     if (rulerLevel > 0.01 && composition !== 'mobile') {
-      const offset = H * 0.4;
+      const offset = H * RULER_OFFSET;
       const scroll = t * 14 + travel * 2600;
       const minor = 16;
       const major = minor * 5;
