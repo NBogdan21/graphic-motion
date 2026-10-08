@@ -1,0 +1,4 @@
+node_modules/
+out/
+# the licensed music track is supplied locally, never committed
+public/track.mp3
